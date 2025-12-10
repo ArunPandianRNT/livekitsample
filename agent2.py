@@ -1,7 +1,7 @@
 """
 RESH & THOSH - LiveKit Avatar Agent
 Gemini 2.5 Flash + Sarvam AI + Simli + JSON-based RAG
-Enhanced with Text + Voice Support + Excel Logging
+Enhanced with Voice Support + Excel Logging + Manual vs Automation
 """
 
 import logging
@@ -34,34 +34,6 @@ EXCEL_LOCK = asyncio.Lock()
 excel_workbook: Optional[Workbook] = None 
 excel_sheet: Optional[openpyxl.worksheet.worksheet.Worksheet] = None
 
-
-# async def initialize_excel():
-#     """Load or create the Excel workbook and set up headers."""
-#     global excel_workbook, excel_sheet
-#     async with EXCEL_LOCK:
-#         try:
-#             if os.path.exists(EXCEL_FILE):
-#                 excel_workbook = openpyxl.load_workbook(EXCEL_FILE)
-#                 excel_sheet = excel_workbook.active
-#                 logger.info(f"💾 Loaded existing Excel workbook: {EXCEL_FILE}")
-#             else:
-#                 excel_workbook = Workbook()
-#                 excel_sheet = excel_workbook.active
-#                 excel_sheet.title = "Agent Log"
-#                 # Write headers
-#                 excel_sheet.append(["Timestamp", "User Request", "Agent Response"])
-#                 excel_workbook.save(EXCEL_FILE)
-#                 logger.info(f"💾 Created new Excel workbook: {EXCEL_FILE}")
-                
-#         except Exception as e:
-#             logger.error(f"❌ Failed to initialize Excel: {e}")
-#             excel_workbook = None
-#             excel_sheet = None
-
-# ============================================================
-# EXCEL LOGGING SETUP (MODIFIED)
-# ============================================================
-# ... (rest of your global variables and imports remain the same) ...
 
 async def initialize_excel():
     """Load or create the Excel workbook and set up headers, handling corrupt files."""
@@ -174,7 +146,7 @@ class JSONContentLoader:
         logger.info(f"📊 Content loading complete: {len(self.pages_content)} pages loaded")
     
     def _use_fallback_content(self):
-        """Fallback content structure"""
+        """Fallback content structure with Manual vs Automation"""
         self.pages_content = {
             'home': {
                 'title': 'Home',
@@ -215,6 +187,11 @@ class JSONContentLoader:
                         'heading': 'IBE',
                         'content': 'Internet Booking Engine providing seamless online booking experiences with real-time availability and secure payment processing.',
                         'url': 'https://reshandthosh.com/products-2/'
+                    },
+                    {
+                        'heading': 'Manual vs Automation',
+                        'content': 'Manual processes cost more due to high labor hours, slower output, and frequent errors, which increases overall operational expense. Automation reduces time, labor cost, and mistakes, allowing the same work to be completed faster and more accurately. ROI is calculated as: ROI = (Manual Cost – Automation Cost) / Automation Cost × 100 to measure how much value automation generates. If automation cost is ₹1,00,000 and it saves ₹60,000/month in manual work, the payback period is less than 2 months and ROI exceeds 300–500%. Overall, automation provides higher efficiency, lower cost, and faster scalability, delivering significant long-term financial and productivity benefits',
+                        'url': 'https://reshandthosh.com/products-2/'
                     }
                 ]
             },
@@ -229,7 +206,7 @@ class JSONContentLoader:
                 ]
             }
         }
-        logger.info("✅ Loaded fallback content structure")
+        logger.info("✅ Loaded fallback content structure with Manual vs Automation")
 
 
 class SimpleRAG:
@@ -278,8 +255,9 @@ class SimpleRAG:
         
         product_keywords = {
             'animate': ['animate', 'animate ai', 'anima', 'email booking', 'flight booking'],
-            'olms': ['olms', 'olm', 'online login', 'login management', 'user management', 'agent management'],
-            'ibe': ['ibe', 'internet booking', 'booking engine', 'online booking']
+            'olms': ['olms', 'olm', 'online login', 'login management', 'user management', 'agent management', 'online login management system'],
+            'ibe': ['ibe', 'internet booking', 'booking engine', 'online booking'],
+            'manual vs automation': ['manual vs automation', 'manual versus automation', 'automation roi', 'automation cost', 'manual cost', 'automation benefit', 'payback period', 'roi calculation', "roi"]
         }
         
         for product, keywords in product_keywords.items():
@@ -400,6 +378,8 @@ def build_rag_from_json():
                     product_name = 'olms'
                 elif 'ibe' in heading_lower:
                     product_name = 'ibe'
+                elif 'manual vs automation' in heading_lower or 'manual versus automation' in heading_lower:
+                    product_name = 'manual vs automation'
                 
                 if product_name:
                     rag.add_product_section(product_name, section_text.strip(), url)
@@ -428,12 +408,12 @@ def should_wave(user_message: str) -> bool:
 
 
 # ============================================================
-# MAIN ENTRYPOINT - FIXED EXCEL LOGGING FLOW
+# MAIN ENTRYPOINT - Audio Only Version
 # ============================================================
 async def entrypoint(ctx: JobContext):
-    logger.info("🚀 JOB DISPATCHED - Starting Resh & Thosh Avatar Agent")
+    logger.info("🚀 JOB DISPATCHED - Starting Resh & Thosh Avatar Agent (Audio Only)")
 
-    # Dictionary to track pending conversations that need to be logged
+    # Dictionary to track pending conversations
     pending_log = {"user_request": None, "agent_response": None}
 
     try:
@@ -447,7 +427,7 @@ async def entrypoint(ctx: JobContext):
         if not rag.chunks:
             logger.error("❌ No content to build RAG from! Exiting...")
             await ctx.connect()
-            await AgentSession(llm=google.LLM(model="gemini-2.0-flash")).start(
+            await AgentSession(llm=google.LLM(model="gemini-2.5-flash-lite")).start(
                 agent=Agent(instructions="Say: I apologize, my knowledge base is currently unavailable. I am the Resh & Thosh agent. Please try again later."), 
                 room=ctx.room
             )
@@ -464,16 +444,10 @@ async def entrypoint(ctx: JobContext):
                 model="saarika:v2.5",
                 api_key=os.getenv("SARVAM_API_KEY"),
             ),
-            llm=google.LLM(
-                model="gemini-2.5-flash",
-                temperature=0.3,
-                max_output_tokens=800,
+            llm=groq.LLM(
+                model="llama-3.1-8b-instant",
+                temperature=0.7,
             ),
-
-            #  Groq
-            # llm=groq.LLM( model="llama-3.1-8b-instant", # <-- FIXED MODEL 
-            # temperature=0.7, ),
-
             tts=sarvam.TTS(
                 target_language_code="en-IN",
                 model="bulbul:v2",
@@ -483,6 +457,7 @@ async def entrypoint(ctx: JobContext):
         )
         logger.info("🧠 Agent Session Created")
 
+        # Beyound Presence Avatar
         avatar = BeyAvatarSession(
             api_key=os.getenv("BEY_API_KEY"),
             avatar_id=os.getenv("BEY_AVATAR_ID"),
@@ -490,16 +465,29 @@ async def entrypoint(ctx: JobContext):
         await avatar.start(session, room=ctx.room)
         logger.info("👤 Beyond Presence Avatar Started")
 
-        # Start Anam Avatar
+        #  Anam Avatar
         # avatar = anam.AvatarSession(
+        #     # Pass Anam API Key directly (or set as ANAM_API_KEY environment variable)
         #     api_key=os.getenv("ANAM_API_KEY"),
+        #     # Configure the specific avatar persona
         #     persona_config=anam.PersonaConfig(
-        #         name="ReshAndThosh Agent",
-        #         avatarId=os.getenv("ANAM_AVATAR_ID"),
+        #         name="ReshAndThosh Agent", 
+        #         avatarId=os.getenv("ANAM_AVATAR_ID"), 
         #     )
         # )
         # await avatar.start(session, room=ctx.room)
         # logger.info("👤 Anam Avatar Started")
+
+
+        # Start Simli Avatar
+        # avatar = simli.AvatarSession(
+        #     simli_config=simli.SimliConfig(
+        #         api_key=os.getenv("SIMLI_API_KEY"),
+        #         face_id=os.getenv("SIMLI_FACE_ID"),
+        #     )
+        # )
+        # await avatar.start(session, room=ctx.room)
+        # logger.info("👤 Simli Avatar Started")
 
         # Create agent
         agent = Agent(
@@ -509,12 +497,81 @@ async def entrypoint(ctx: JobContext):
         await session.start(agent=agent, room=ctx.room)
         logger.info("🎙️ Agent Session Started")
 
+        # Send data to UI
+        async def send_to_ui(text: str, message_type: str):
+            """Send message to UI via data channel"""
+            try:
+                data_packet = json.dumps({
+                    "text": text,
+                    "type": message_type,
+                    "final": True
+                })
+                await ctx.room.local_participant.publish_data(
+                    data_packet.encode('utf-8'),
+                    reliable=True
+                )
+                logger.info(f"📤 Sent to UI ({message_type}): {text[:50]}...")
+            except Exception as e:
+                logger.error(f"❌ Failed to send to UI: {e}")
+
+        # CRITICAL FIX: Use agent_started_speaking to capture the response
+        @session.on("agent_started_speaking")
+        def on_agent_started_speaking():
+            """Track when agent starts speaking"""
+            logger.info("🔊 Agent started speaking")
+        
+        # CRITICAL FIX: Use agent_stopped_speaking to log interaction
+        @session.on("agent_stopped_speaking")
+        def on_agent_stopped_speaking():
+            """When agent stops speaking, log the interaction"""
+            async def handle():
+                try:
+                    logger.info("🔇 Agent stopped speaking - attempting to log")
+                    
+                    # Try to get the response from chat context
+                    response_text = ""
+                    try:
+                        if hasattr(session, '_agent') and hasattr(session._agent, '_chat_ctx'):
+                            messages = session._agent._chat_ctx.messages
+                            if messages and len(messages) > 0:
+                                # Get the last assistant message
+                                for msg in reversed(messages):
+                                    if hasattr(msg, 'role') and msg.role == 'assistant':
+                                        if hasattr(msg, 'content'):
+                                            response_text = msg.content
+                                            break
+                                
+                                if response_text:
+                                    logger.info(f"📝 Captured response: {response_text[:100]}...")
+                                    
+                                    # Store and send
+                                    pending_log["agent_response"] = response_text
+                                    await send_to_ui(response_text, "agent_response")
+                                    
+                                    # Log to Excel
+                                    if pending_log["user_request"] and pending_log["agent_response"]:
+                                        await log_interaction(
+                                            user_request=pending_log["user_request"],
+                                            agent_response=pending_log["agent_response"]
+                                        )
+                                        logger.info("✅ Interaction logged to Excel")
+                                        # Clear
+                                        pending_log["user_request"] = None
+                                        pending_log["agent_response"] = None
+                    except Exception as e:
+                        logger.error(f"❌ Could not capture from chat context: {e}")
+                        
+                except Exception as e:
+                    logger.error(f"❌ Error in agent_stopped_speaking handler: {e}", exc_info=True)
+            
+            asyncio.create_task(handle())
+
         # RAG-enhanced instructions
         async def answer_with_rag(user_question: str):
             """Process user question with RAG context and generate response"""
-            # Store the user request in pending_log
+            # Store the user request
             pending_log["user_request"] = user_question
-            pending_log["agent_response"] = None  # Reset response
+            pending_log["agent_response"] = None
             
             logger.info(f"🔍 Processing query: '{user_question}'")
             
@@ -539,8 +596,12 @@ async def entrypoint(ctx: JobContext):
                 - Sound natural and enthusiastic
                 - Be conversational and welcoming
                 """
-                await session.generate_reply(instructions=enhanced_instruction)
-                logger.info("✅ Greeting response generated")
+                
+                try:
+                    await session.generate_reply(instructions=enhanced_instruction)
+                    logger.info("✅ Greeting response requested")
+                except Exception as e:
+                    logger.error(f"❌ Error generating greeting: {e}")
                 return
             
             context = rag.search(user_question, top_k=4, is_greeting=False)
@@ -613,64 +674,19 @@ async def entrypoint(ctx: JobContext):
 
                 INSTRUCTIONS:
                 - Politely acknowledge you don't have that specific information (1 sentence)
-                - Mention you can help with Resh & Thosh products (Animate AI, OLMS, IBE) or company information (1 sentence)
+                - Mention you can help with Resh & Thosh products (Animate AI, OLMS, IBE, Manual vs Automation) or company information (1 sentence)
                 - Keep response to 2 sentences total
                 - Sound friendly, helpful, and apologetic
                 - Offer to help with what you do know about
                 """
-                                        
-            await session.generate_reply(instructions=enhanced_instruction)
-            logger.info("✅ Response generated and sent")
-        
-        # Send data to UI
-        async def send_to_ui(text: str, message_type: str):
-            """Send message to UI via data channel"""
+            
             try:
-                data_packet = json.dumps({
-                    "text": text,
-                    "type": message_type,
-                    "final": True
-                })
-                await ctx.room.local_participant.publish_data(
-                    data_packet.encode('utf-8'),
-                    reliable=True
-                )
-                logger.info(f"📤 Sent to UI ({message_type}): {text[:50]}...")
+                await session.generate_reply(instructions=enhanced_instruction)
+                logger.info("✅ Response requested from LLM")
             except Exception as e:
-                logger.error(f"❌ Failed to send to UI: {e}")
-
-        # FIXED: Intercept TTS to capture agent response and log complete interaction
-        original_tts_synthesize = session.tts.synthesize
+                logger.error(f"❌ Error generating response: {e}", exc_info=True)
         
-        async def wrapped_tts_synthesize(text: str, *args, **kwargs):
-            """Capture TTS text, send to UI, and log complete interaction to Excel"""
-            logger.info(f"🗣️ Agent will say: {text}")
-            
-            # Store agent response
-            pending_log["agent_response"] = text
-            
-            # Send agent's response to UI
-            await send_to_ui(text, "agent_response")
-            
-            # FIXED: Log the complete interaction to Excel NOW
-            if pending_log["user_request"] and pending_log["agent_response"]:
-                await log_interaction(
-                    user_request=pending_log["user_request"],
-                    agent_response=pending_log["agent_response"]
-                )
-                # Clear the pending log after successful logging
-                pending_log["user_request"] = None
-                pending_log["agent_response"] = None
-            else:
-                logger.warning("⚠️ Incomplete log data - skipping Excel log")
-            
-            # Continue with normal TTS
-            result = await original_tts_synthesize(text, *args, **kwargs)
-            return result
-        
-        session.tts.synthesize = wrapped_tts_synthesize
-        
-        # Capture user speech
+        # Capture user speech (AUDIO ONLY - NO TEXT INPUT)
         @session.on("user_speech_committed")
         def on_user_speech_committed(msg):
             async def handle():
@@ -687,33 +703,12 @@ async def entrypoint(ctx: JobContext):
             
             asyncio.create_task(handle())
 
-        # Handle text messages from user
-        def on_data_received(data: rtc.DataPacket):
-            async def process_data():
-                try:
-                    message = json.loads(data.data.decode('utf-8'))
-                    logger.info(f"📨 Received data packet: {message}")
-                    
-                    if message.get("type") == "text" or "text" in message:
-                        user_text = message.get("text", "")
-                        if user_text:
-                            logger.info(f"💬 User typed (TEXT): '{user_text}'")
-                            
-                            await send_to_ui(user_text, "user_text_echo")
-                            await asyncio.sleep(0.1)
-                            await answer_with_rag(user_text)
-                            
-                except json.JSONDecodeError:
-                    logger.debug("Received non-JSON data packet")
-                except Exception as e:
-                    logger.error(f"❌ Error handling data packet: {e}")
-            
-            asyncio.create_task(process_data())
+        # ============================================================
+        # Initial greeting with announcement
+        # ============================================================
+        logger.info("👋 Preparing initial greeting with product announcement...")
+        await asyncio.sleep(1.0)
         
-        ctx.room.on("data_received", on_data_received)
-        
-        # Initial greeting
-        logger.info("👋 Sending initial greeting...")
         initial_context = rag.search("company introduction", top_k=2, is_greeting=True)
         
         if initial_context and 'Future-ready solutions built to streamline operations' in initial_context:
@@ -722,34 +717,38 @@ async def entrypoint(ctx: JobContext):
                 'We offer future-ready solutions to streamline operations and elevate traveler experiences in the travel industry.'
             )
         
-        greeting_instruction = f"""Give a warm, professional welcome message introducing Resh and Thosh.
+        greeting_instruction = f"""Give a warm, professional welcome message introducing Resh and Thosh with a new product announcement.
 
-Context about the company:
-{initial_context if initial_context else "Resh & Thosh provides innovative travel technology solutions including AI-powered booking systems, automation, and video avatars for the travel industry."}
+        Context about the company:
+        {initial_context if initial_context else "Resh & Thosh provides innovative travel technology solutions including AI-powered booking systems, automation, and video avatars for the travel industry."}
 
-INSTRUCTIONS:
-- Start with: "Hello and welcome to Resh & Thosh!"
-- State in ONE clear sentence what Resh and Thosh specializes in (use context - mention travel technology, AI, automation, and video avatars)
-- Mention you're ready to answer questions about their products or services (2 sentence)
-- Total: EXACTLY 3 sentences
-- Sound warm, welcoming, and professional
-- Be conversational and friendly
-- Do NOT mention any URLs or websites
-- Keep each sentence concise and informative
+        INSTRUCTIONS:
+        - Start with: "Hello and welcome to Resh & Thosh!"
+        - State in ONE clear sentence what Resh and Thosh specializes in (use context - mention travel technology, AI, automation, and video avatars)
+        - Add this announcement: "We are excited to announce the launch of our new product designed to clearly highlight the cost difference between manual processes and automated workflows."
+        - End with: "If you want to know more about this, just ask for manual versus automation details."
+        - Total: EXACTLY 4 sentences
+        - Sound warm, welcoming, and professional
+        - Be conversational and friendly
+        - Do NOT mention any URLs or websites
+        - Keep each sentence concise
 
-Example format:
-"Hello and welcome to Resh & Thosh! [One sentence about what the company does]. I'm here to answer any questions about our products and services."
-"""
-        # Set user request for initial greeting
-        pending_log["user_request"] = "[Initial Greeting]"
-        await session.generate_reply(instructions=greeting_instruction)
-        logger.info("✅ Initial greeting sent")
+        Example format:
+        "Hello and welcome to Resh & Thosh! [One sentence about what the company does]. We are excited to announce the launch of our new product designed to clearly highlight the cost difference between manual processes and automated workflows. If you want to know more about this, just ask for manual versus automation details."
+        """
+        
+        pending_log["user_request"] = "[Initial Greeting - Auto]"
+        
+        try:
+            await session.generate_reply(instructions=greeting_instruction)
+            logger.info("✅ Initial greeting with product announcement requested")
+        except Exception as e:
+            logger.error(f"❌ Error generating initial greeting: {e}")
 
-        logger.info("✅ AVATAR FULLY LIVE!")
+        logger.info("✅ AVATAR FULLY LIVE! (Audio Only Mode)")
 
     except Exception as e:
         logger.error(f"❌ EntryPoint Error: {e}", exc_info=True)
-        # Save workbook on error
         if excel_workbook:
             async with EXCEL_LOCK:
                 try:
@@ -758,7 +757,6 @@ Example format:
                 except:
                     pass
         raise
-
 
 if __name__ == "__main__":
     logger.info("🛠️ Starting Worker - Waiting for Jobs...")
